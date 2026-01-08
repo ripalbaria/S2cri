@@ -20,34 +20,28 @@ jobs:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. Fetch the raw M3U data
+          # 1. Fetch data using the secret URL and Proxy
+          # Use "$PROXY_ADDR" directly to avoid 'http' resolution errors
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
+            -H "Accept: */*" \
+            -H "Accept-Encoding: gzip" \
+            -H "Cache-Control: no-cache, no-store" \
             "$SONY_SECRET_URL" \
             -o temp_sony.m3u
 
-          # 2. Safety Check
-          if ! grep -q "#EXTM3U" temp_sony.m3u; then
-            echo "FAILURE: Invalid M3U received."
+          # 2. SAFETY CHECK: Ensure the response is a valid M3U file
+          if grep -q "#EXTM3U" temp_sony.m3u; then
+            mv temp_sony.m3u sony.m3u
+            echo "SUCCESS: Valid Sony playlist received."
+          else
+            echo "FAILURE: Received invalid data. Ensure SONY_PROXY secret is only IP:PORT (e.g. 1.1.1.1:8080)"
             exit 1
           fi
-
-          # 3. Update Logos from Slivtv.json
-          # This part downloads your reference JSON to get the logos
-          curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" -o logos.json
-
-          # Loop through each channel in the JSON and update the M3U
-          # Note: This assumes the channel names match exactly between M3U and JSON
-          while read -r name logo; do
-            # Replace tvg-logo="old" with tvg-logo="new" for specific channels
-            sed -i "/$name/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$logo\"|g" temp_sony.m3u
-          done < <(jq -r '.[] | "\(.name) \(.logo)"' logos.json)
-
-          mv temp_sony.m3u sony.m3u
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Update with Logos: $(date)" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Update: $(date)" && git push)
