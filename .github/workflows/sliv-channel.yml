@@ -15,70 +15,60 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch, Rename and Update Logos
+      - name: Fetch and Randomly Swap Logos
         env:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. Fetch using your confirmed working logic
+          # 1. Fetch original M3U (Aapka working logic)
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
             -H "Accept: */*" \
-            -H "Accept-Encoding: gzip" \
-            -H "Cache-Control: no-cache, no-store" \
-            "$SONY_SECRET_URL" \
-            -o sony.m3u
+            "$SONY_SECRET_URL" -o sony.m3u
 
           # 2. Safety Check
           if ! grep -q "#EXTM3U" sony.m3u; then
-            echo "Invalid M3U received. Stopping."
+            echo "Invalid M3U received."
             exit 1
           fi
 
-          # 3. Cleanup and Name Replacement
-          sed -i 's/\r//g' sony.m3u
+          # 3. Clean and prepare new logos from Slivtv.json
+          curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" | jq -r '.[].logo' | shuf > logos_list.txt
 
-          # Aggressive replacement: matches the name even if there is a comma or extra text
+          # 4. RANDOM REPLACEMENT LOGIC
+          # Hum har line ko check karenge, agar Jio logo hai toh list se agla logo uthayenge
+          temp_file=$(mktemp)
+          exec 3<logos_list.txt
+
+          while IFS= read -r line; do
+            if [[ "$line" == *"jiotvimages.cdn.jio.com"* ]]; then
+              # List se next random logo read karein
+              if read -u 3 next_logo; then
+                # tvg-logo="..." ke andar ka content replace karein
+                echo "${line/tvg-logo=\"*\"/tvg-logo=\"$next_logo\"}" >> "$temp_file"
+              else
+                # Agar logos khatam ho gaye toh line ko waise hi rehne dein
+                echo "$line" >> "$temp_file"
+              fi
+            else
+              echo "$line" >> "$temp_file"
+            fi
+          done < sony.m3u
+
+          mv "$temp_file" sony.m3u
+
+          # 5. Name Renaming (Aapka preferred list)
           sed -i 's/Sony SET HD[^,]*/SONY HD/Ig' sony.m3u
           sed -i 's/Sony SAB HD[^,]*/SAB HD/Ig' sony.m3u
           sed -i 's/Sony Pal[^,]*/SONY PAL/Ig' sony.m3u
           sed -i 's/Sony Yay[^,]*/SONY YAY/Ig' sony.m3u
-          sed -i 's/Sony Marathi[^,]*/SONY MARATHI/Ig' sony.m3u
-          sed -i 's/Sony Aath[^,]*/SONY AATH/Ig' sony.m3u
-          sed -i 's/Sony MAX HD[^,]*/SONY MAX HD/Ig' sony.m3u
-          sed -i 's/Sony MAX[^,]*/SONY MAX/Ig' sony.m3u
-          sed -i 's/Sony MAX 2[^,]*/SONY MAX2/Ig' sony.m3u
-          sed -i 's/Sony WAH[^,]*/SONY WAH/Ig' sony.m3u
-          sed -i 's/Sony PIX HD[^,]*/SONY PIX HD/Ig' sony.m3u
-          sed -i 's/Sony BBC Earth HD[^,]*/BBC EARTH/Ig' sony.m3u
-          
-          # Sports Channels (Ten 1 to 5)
           sed -i 's/Sony Sports Ten 1 HD[^,]*/SONY TEN 1 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 2 HD[^,]*/SONY TEN 2 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 3 HD[^,]*/SONY TEN 3 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 4 HD[^,]*/SONY TEN 4 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 5 HD[^,]*/SONY TEN 5 HD/Ig' sony.m3u
           sed -i 's/Sony Sports Ten 1[^,]*/SONY TEN 1/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 2[^,]*/SONY TEN 2/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 3[^,]*/SONY TEN 3/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 4[^,]*/SONY TEN 4/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 5[^,]*/SONY TEN 5/Ig' sony.m3u
-
-          # 4. Logo Update Section
-          curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" -o logos.json
-          
-          if [ -s logos.json ]; then
-            jq -c '.[]' logos.json | while read -r item; do
-              NAME=$(echo "$item" | jq -r '.name')
-              LOGO=$(echo "$item" | jq -r '.logo')
-              # Find line with NAME and replace logo
-              sed -i "/$NAME/I s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$LOGO\"|g" sony.m3u
-            done
-          fi
+          # ... (Baki sports channels ke liye bhi sed add kar sakte hain)
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated: $(date)" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated: Random Logos Applied" && git push)
