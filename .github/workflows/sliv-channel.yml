@@ -1,4 +1,4 @@
-name: sony-sync-playlist
+name: Sony-Sync Playlist
 
 on:
   schedule:
@@ -15,63 +15,33 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch and Process
+      - name: Fetch Sony with Proxy
         env:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. --- FETCH WITH TIMEOUT (Loop rokne ke liye) ---
-          # --connect-timeout 30: 30 seconds me connect nahi hua toh cancel
-          curl -x "$PROXY_ADDR" -L --connect-timeout 30 --max-time 60 --compressed \
+          # 1. Fetch data using the secret URL and Proxy
+          # Use "$PROXY_ADDR" directly to avoid 'http' resolution errors
+          curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
             -H "Accept: */*" \
-            "$SONY_SECRET_URL" -o temp.m3u
+            -H "Accept-Encoding: gzip" \
+            -H "Cache-Control: no-cache, no-store" \
+            "$SONY_SECRET_URL" \
+            -o temp_sony.m3u
 
-          # 2. --- STRICT VALIDATION ---
-          if grep -q "<!DOCTYPE html" temp.m3u || ! grep -q "#EXTM3U" temp.m3u; then
-            echo "ERROR: Invalid file detected. Stopping."
+          # 2. SAFETY CHECK: Ensure the response is a valid M3U file
+          if grep -q "#EXTM3U" temp_sony.m3u; then
+            mv temp_sony.m3u sony.m3u
+            echo "SUCCESS: Valid Sony playlist received."
+          else
+            echo "FAILURE: Received invalid data. Ensure SONY_PROXY secret is only IP:PORT (e.g. 1.1.1.1:8080)"
             exit 1
           fi
 
-          # 3. --- CLEANUP & RENAMING ---
-          sed -i 's/\r//g' temp.m3u
-          
-          # Renaming (Aggressive matching)
-          sed -i 's/Sony SET HD[^,]*/SONY HD/Ig' temp.m3u
-          sed -i 's/Sony SAB HD[^,]*/SAB HD/Ig' temp.m3u
-          sed -i 's/Sony Pal[^,]*/SONY PAL/Ig' temp.m3u
-          sed -i 's/Sony Yay[^,]*/SONY YAY/Ig' temp.m3u
-          sed -i 's/Sony MAX HD[^,]*/SONY MAX HD/Ig' temp.m3u
-          sed -i 's/Sony MAX[^,]*/SONY MAX/Ig' temp.m3u
-          sed -i 's/Sony Sports Ten \([1-5]\) HD[^,]*/SONY TEN \1 HD/Ig' temp.m3u
-          sed -i 's/Sony Sports Ten \([1-5]\)[^,]*/SONY TEN \1/Ig' temp.m3u
-
-          # 4. --- DIRECT LOGO REPLACEMENT (No Loop matching) ---
-          # Slivtv.json se logos shuffle karke list banayein
-          curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" | jq -r '.[].logo' | shuf > logos.txt
-          
-          python3 -c '
-          with open("logos.txt") as f:
-              logos = [l.strip() for l in f if l.strip()]
-          idx = 0
-          with open("temp.m3u", "r") as f_in, open("sony.m3u", "w") as f_out:
-              for line in f_in:
-                  # tvg-logo attribute ko target karein chahe koi bhi URL ho
-                  if "tvg-logo=\"" in line:
-                      parts = line.split("tvg-logo=\"", 1)
-                      before = parts[0]
-                      # Agle double quote tak ka purana URL nikal dein
-                      after = parts[1].split("\"", 1)[1]
-                      new_logo = logos[idx % len(logos)]
-                      f_out.write(f"{before}tvg-logo=\"{new_logo}\"{after}")
-                      idx += 1
-                  else:
-                      f_out.write(line)
-          '
-
-      - name: Commit and Push
+      - name: Commit and Push Changes
         run: |
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated: Fixed Loop & Origin Logos" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Update: $(date)" && git push)
