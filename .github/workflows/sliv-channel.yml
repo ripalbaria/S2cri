@@ -15,52 +15,53 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch and Process M3U
+      - name: Fetch and Process
         env:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. --- AAPKA WORKING FETCH CODE ---
+          # 1. --- EXACT FETCH LOGIC ---
+          # Pehle temporary file me download karein taaki seedha overwrite na ho
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
             -H "Accept: */*" \
-            "$SONY_SECRET_URL" -o sony.m3u
+            "$SONY_SECRET_URL" -o temp.m3u
 
-          # 2. --- CLEANUP & RENAMING ---
-          sed -i 's/\r//g' sony.m3u
-          
-          # Sabhi channels ko rename karein (SD/HD dono ke liye)
-          sed -i 's/Sony SET HD[^,]*/SONY HD/Ig' sony.m3u
-          sed -i 's/Sony SAB HD[^,]*/SAB HD/Ig' sony.m3u
-          sed -i 's/Sony Pal[^,]*/SONY PAL/Ig' sony.m3u
-          sed -i 's/Sony Yay[^,]*/SONY YAY/Ig' sony.m3u
-          sed -i 's/Sony Marathi[^,]*/SONY MARATHI/Ig' sony.m3u
-          sed -i 's/Sony Aath[^,]*/SONY AATH/Ig' sony.m3u
-          sed -i 's/Sony MAX HD[^,]*/SONY MAX HD/Ig' sony.m3u
-          sed -i 's/Sony MAX[^,]*/SONY MAX/Ig' sony.m3u
-          sed -i 's/Sony MAX 2[^,]*/SONY MAX2/Ig' sony.m3u
-          sed -i 's/Sony WAH[^,]*/SONY WAH/Ig' sony.m3u
-          sed -i 's/Sony PIX HD[^,]*/SONY PIX HD/Ig' sony.m3u
-          sed -i 's/Sony BBC Earth HD[^,]*/BBC EARTH/Ig' sony.m3u
+          # 2. --- STRICT VALIDATION ---
+          # Agar file me HTML hai ya #EXTM3U nahi hai, toh turant fail karein
+          if grep -q "<!DOCTYPE html" temp.m3u || ! grep -q "#EXTM3U" temp.m3u; then
+            echo "ERROR: Invalid file/HTML detected. Stopping to save your data."
+            exit 1
+          fi
+
+          # 3. --- RENAME & LOGO SWAP ---
+          # Hidden characters cleanup
+          sed -i 's/\r//g' temp.m3u
+
+          # Renaming (Aggressive matching)
+          sed -i 's/Sony SET HD[^,]*/SONY HD/Ig' temp.m3u
+          sed -i 's/Sony SAB HD[^,]*/SAB HD/Ig' temp.m3u
+          sed -i 's/Sony Pal[^,]*/SONY PAL/Ig' temp.m3u
+          sed -i 's/Sony Yay[^,]*/SONY YAY/Ig' temp.m3u
+          sed -i 's/Sony MAX HD[^,]*/SONY MAX HD/Ig' temp.m3u
+          sed -i 's/Sony MAX[^,]*/SONY MAX/Ig' temp.m3u
+          sed -i 's/Sony MAX 2[^,]*/SONY MAX2/Ig' temp.m3u
           
           # Sports
-          sed -i 's/Sony Sports Ten \([1-5]\) HD[^,]*/SONY TEN \1 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten \([1-5]\)[^,]*/SONY TEN \1/Ig' sony.m3u
+          sed -i 's/Sony Sports Ten \([1-5]\) HD[^,]*/SONY TEN \1 HD/Ig' temp.m3u
+          sed -i 's/Sony Sports Ten \([1-5]\)[^,]*/SONY TEN \1/Ig' temp.m3u
 
-          # 3. --- SIMPLE PYTHON LOGO SWAP ---
+          # 4. --- LOGO SWAP (Simple Python) ---
           curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" | jq -r '.[].logo' | shuf > logos.txt
           
           python3 -c '
           with open("logos.txt") as f:
               logos = [l.strip() for l in f if l.strip()]
-          
           idx = 0
-          with open("sony.m3u", "r") as f_in, open("temp.m3u", "w") as f_out:
+          with open("temp.m3u", "r") as f_in, open("sony.m3u", "w") as f_out:
               for line in f_in:
-                  # Agar line me tvg-logo hai
                   if "tvg-logo=\"" in line:
-                      # "tvg-logo=\"" se lekar agle "\"" tak ka pura part replace karein
-                      parts = line.split("tvg-logo=\"")
+                      parts = line.split("tvg-logo=\"", 1)
                       before = parts[0]
                       after = parts[1].split("\"", 1)[1]
                       new_logo = logos[idx % len(logos)]
@@ -69,11 +70,11 @@ jobs:
                   else:
                       f_out.write(line)
           '
-          mv temp.m3u sony.m3u
 
-      - name: Commit and Push Changes
+      - name: Commit and Push
         run: |
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated: Final Fix for All Channels" && git push)
+          # Agar koi change nahi hai toh push na karein
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated: All Channels Fixed" && git push)
