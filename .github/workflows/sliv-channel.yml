@@ -20,14 +20,16 @@ jobs:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. Fetch the raw M3U
+          # 1. EXACT working fetch logic (no changes here)
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
+            -H "Accept: */*" \
+            -H "Accept-Encoding: gzip" \
+            -H "Cache-Control: no-cache, no-store" \
             "$SONY_SECRET_URL" \
             -o sony.m3u
 
-          # 2. RENAME CHANNELS (Exact Matching)
-          # We use sed to replace the name found at the end of the #EXTINF line
+          # 2. Rename Step (Directly inside the working file)
           sed -i 's/Sony SET HD/SONY HD/g' sony.m3u
           sed -i 's/Sony SAB HD/SAB HD/g' sony.m3u
           sed -i 's/Sony Pal/SONY PAL/g' sony.m3u
@@ -51,19 +53,23 @@ jobs:
           sed -i 's/Sony Sports Ten 4/SONY TEN 4/g' sony.m3u
           sed -i 's/Sony Sports Ten 5/SONY TEN 5/g' sony.m3u
 
-          # 3. APPLY LOGOS from Slivtv.json
+          # 3. Logo Update Step (Processing logos.json separately)
           curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" -o logos.json
-
+          
           if [ -s sony.m3u ] && [ -s logos.json ]; then
+            # Extract names and logos from JSON and apply to M3U
             jq -c '.[]' logos.json | while read -r item; do
               NAME=$(echo "$item" | jq -r '.name')
               LOGO=$(echo "$item" | jq -r '.logo')
-              
-              # Replace the logo only for the specific channel name
-              # Using the renamed names for matching
+              # Swap the logo for the specific renamed channel
               sed -i "/$NAME/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$LOGO\"|g" sony.m3u
             done
-            echo "SUCCESS: Renaming and Logo update complete."
+          fi
+          
+          # Final validation
+          if grep -q "<!DOCTYPE html" sony.m3u; then
+             echo "ERROR: HTML detected. Something went wrong."
+             exit 1
           fi
 
       - name: Commit and Push Changes
@@ -71,4 +77,4 @@ jobs:
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Sync (Renamed & Logos): $(date)" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated (Renamed & Logos): $(date)" && git push)
