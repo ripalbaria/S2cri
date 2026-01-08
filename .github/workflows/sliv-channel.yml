@@ -29,12 +29,10 @@ jobs:
             "$SONY_SECRET_URL" \
             -o sony.m3u
 
-          # 2. CLEAN-UP: Remove hidden carriage returns (\r) and trailing spaces
-          # This ensures 'sed' can find the channel names correctly
+          # 2. CLEAN-UP: Remove hidden characters that break matching
           sed -i 's/\r//g' sony.m3u
-          sed -i 's/[[:space:]]*$//' sony.m3u
 
-          # 3. RENAME CHANNELS (Exact Matching)
+          # 3. RENAME CHANNELS (Using partial matching to ensure it catches the line)
           sed -i 's/Sony SET HD/SONY HD/g' sony.m3u
           sed -i 's/Sony SAB HD/SAB HD/g' sony.m3u
           sed -i 's/Sony Pal/SONY PAL/g' sony.m3u
@@ -58,14 +56,16 @@ jobs:
           sed -i 's/Sony Sports Ten 4/SONY TEN 4/g' sony.m3u
           sed -i 's/Sony Sports Ten 5/SONY TEN 5/g' sony.m3u
 
-          # 4. LOGO UPDATE
+          # 4. LOGO UPDATE (Forcing replacement even with extra text)
           curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" -o logos.json
           
           if [ -s sony.m3u ] && [ -s logos.json ]; then
             jq -c '.[]' logos.json | while read -r item; do
               NAME=$(echo "$item" | jq -r '.name')
               LOGO=$(echo "$item" | jq -r '.logo')
-              # Swap the logo URL
+              
+              # Use partial matching for the channel name to find the right line
+              # Then replace anything inside tvg-logo="..." with the new URL
               sed -i "/$NAME/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$LOGO\"|g" sony.m3u
             done
           fi
