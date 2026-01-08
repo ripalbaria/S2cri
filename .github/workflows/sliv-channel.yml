@@ -1,4 +1,4 @@
-name: sony-sync-playlist
+name: Sony-Sync Playlist
 
 on:
   schedule:
@@ -15,41 +15,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch Sony and Swap Logos
+      - name: Fetch Sony with Proxy
         env:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. Fetch data using your working logic
+          # 1. Fetch data using the secret URL and Proxy
+          # Use "$PROXY_ADDR" directly to avoid 'http' resolution errors
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
             -H "Accept: */*" \
+            -H "Accept-Encoding: gzip" \
+            -H "Cache-Control: no-cache, no-store" \
             "$SONY_SECRET_URL" \
-            -o sony.m3u
+            -o temp_sony.m3u
 
-          # 2. Fetch the latest logos
-          curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" -o logos.json
-
-          # 3. Enhanced Logo Replacement
-          if [ -s sony.m3u ] && [ -s logos.json ]; then
-            echo "Starting logo replacement..."
-            
-            # Read JSON and loop
-            jq -c '.[]' logos.json | while read -r item; do
-              NAME=$(echo "$item" | jq -r '.name')
-              LOGO=$(echo "$item" | jq -r '.logo')
-              
-              # Check if the channel name exists in the M3U before trying to replace
-              if grep -q "$NAME" sony.m3u; then
-                # This logic handles names with spaces and special characters better
-                sed -i "/$NAME/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$LOGO\"|g" sony.m3u
-                echo "Updated: $NAME"
-              else
-                echo "Skipped: $NAME (Name not found in M3U)"
-              fi
-            done
+          # 2. SAFETY CHECK: Ensure the response is a valid M3U file
+          if grep -q "#EXTM3U" temp_sony.m3u; then
+            mv temp_sony.m3u sony.m3u
+            echo "SUCCESS: Valid Sony playlist received."
           else
-            echo "ERROR: Files missing"
+            echo "FAILURE: Received invalid data. Ensure SONY_PROXY secret is only IP:PORT (e.g. 1.1.1.1:8080)"
             exit 1
           fi
 
