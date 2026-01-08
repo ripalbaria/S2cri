@@ -20,7 +20,7 @@ jobs:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. --- AAPKA WORKING FETCH CODE ---
+          # 1. --- AAPKA WORKING FETCH CODE (UNTOUCHED) ---
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
             -H "Accept: */*" \
@@ -38,7 +38,7 @@ jobs:
           # 3. --- CLEANUP & RENAMING ---
           sed -i 's/\r//g' sony.m3u
 
-          # Display Names Update (Broad matching for duplicates)
+          # Display Names Update (Broad matching for duplicate names)
           sed -i 's/Sony SET HD[^,]*/SONY HD/Ig' sony.m3u
           sed -i 's/Sony SAB HD[^,]*/SAB HD/Ig' sony.m3u
           sed -i 's/Sony Pal[^,]*/SONY PAL/Ig' sony.m3u
@@ -52,45 +52,44 @@ jobs:
           sed -i 's/Sony PIX HD[^,]*/SONY PIX HD/Ig' sony.m3u
           sed -i 's/Sony BBC Earth HD[^,]*/BBC EARTH/Ig' sony.m3u
           
-          # Sports Channels
+          # Sports Channels Renaming
           sed -i 's/Sony Sports Ten 1 HD[^,]*/SONY TEN 1 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 2 HD[^,]*/SONY TEN 2 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 3 HD[^,]*/SONY TEN 3 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 4 HD[^,]*/SONY TEN 4 HD/Ig' sony.m3u
-          sed -i 's/Sony Sports Ten 5 HD[^,]*/SONY TEN 5 HD/Ig' sony.m3u
           sed -i 's/Sony Sports Ten 1[^,]*/SONY TEN 1/Ig' sony.m3u
+          sed -i 's/Sony Sports Ten 2 HD[^,]*/SONY TEN 2 HD/Ig' sony.m3u
           sed -i 's/Sony Sports Ten 2[^,]*/SONY TEN 2/Ig' sony.m3u
+          sed -i 's/Sony Sports Ten 3 HD[^,]*/SONY TEN 3 HD/Ig' sony.m3u
           sed -i 's/Sony Sports Ten 3[^,]*/SONY TEN 3/Ig' sony.m3u
+          sed -i 's/Sony Sports Ten 4 HD[^,]*/SONY TEN 4 HD/Ig' sony.m3u
           sed -i 's/Sony Sports Ten 4[^,]*/SONY TEN 4/Ig' sony.m3u
+          sed -i 's/Sony Sports Ten 5 HD[^,]*/SONY TEN 5 HD/Ig' sony.m3u
           sed -i 's/Sony Sports Ten 5[^,]*/SONY TEN 5/Ig' sony.m3u
 
-          # 4. --- FINAL FIX LOGO SWAP (Individual Line Processing) ---
+          # 4. --- ADVANCED PYTHON LOGO SWAP ---
+          # Fetch logos and shuffle
           curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" | jq -r '.[].logo' | shuf > logos_list.txt
           
-          # Naya Safe Logic: Ye line by line logo ko check karke replace karega
-          # Isse duplicate "SONY MAX" par bhi logo sahi baithega
           python3 -c '
-          import sys
-          with open("logos_list.txt") as f:
+          import sys, re
+          # Read all logos from list
+          with open("logos_list.txt", "r") as f:
               logos = [line.strip() for line in f if line.strip()]
           
-          logo_idx = 0
-          with open("sony.m3u", "r") as f:
-              for line in f:
+          # Process m3u line by line
+          with open("sony.m3u", "r") as f_in, open("temp_sony.m3u", "w") as f_out:
+              idx = 0
+              for line in f_in:
+                  # Check if line contains tvg-logo
                   if "tvg-logo=\"" in line:
-                      # Find the current logo and swap it
-                      start = line.find("tvg-logo=\"") + 10
-                      end = line.find("\"", start)
-                      new_logo = logos[logo_idx % len(logos)]
-                      print(line[:start] + new_logo + line[end:], end="")
-                      logo_idx += 1
-                  else:
-                      print(line, end="")
-          ' > temp_sony.m3u && mv temp_sony.m3u sony.m3u
+                      # Replace the entire value inside quotes with the new logo
+                      line = re.sub(r"tvg-logo=\"[^\"]*\"", f"tvg-logo=\"{logos[idx % len(logos)]}\"", line)
+                      idx += 1
+                  f_out.write(line)
+          '
+          mv temp_sony.m3u sony.m3u
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated: Duplicate Fix Applied" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated: Full Fix for Mid-Channels" && git push)
