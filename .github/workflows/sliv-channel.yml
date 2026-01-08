@@ -15,57 +15,54 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch, Clean, Rename, and Update Logos
+      - name: Fetch, Clean, and Rebuild M3U
         env:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. Fetch using your exact working logic
+          # 1. Fetch the raw M3U using your working logic
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
             -H "Accept: */*" \
-            -H "Accept-Encoding: gzip" \
-            -H "Cache-Control: no-cache, no-store" \
-            "$SONY_SECRET_URL" \
-            -o sony.m3u
+            "$SONY_SECRET_URL" -o raw.m3u
 
-          # 2. CLEAN-UP: Remove hidden characters that break matching
-          sed -i 's/\r//g' sony.m3u
+          # 2. Cleanup hidden characters
+          sed -i 's/\r//g' raw.m3u
 
-          # 3. RENAME CHANNELS (Using partial matching to ensure it catches the line)
-          sed -i 's/Sony SET HD/SONY HD/g' sony.m3u
-          sed -i 's/Sony SAB HD/SAB HD/g' sony.m3u
-          sed -i 's/Sony Pal/SONY PAL/g' sony.m3u
-          sed -i 's/Sony Yay/SONY YAY/g' sony.m3u
-          sed -i 's/Sony Marathi/SONY MARATHI/g' sony.m3u
-          sed -i 's/Sony Aath/SONY AATH/g' sony.m3u
-          sed -i 's/Sony MAX HD/SONY MAX HD/g' sony.m3u
-          sed -i 's/Sony MAX/SONY MAX/g' sony.m3u
-          sed -i 's/Sony MAX 2/SONY MAX2/g' sony.m3u
-          sed -i 's/Sony WAH/SONY WAH/g' sony.m3u
-          sed -i 's/Sony PIX HD/SONY PIX HD/g' sony.m3u
-          sed -i 's/Sony BBC Earth HD/BBC EARTH/g' sony.m3u
-          sed -i 's/Sony Sports Ten 1 HD/SONY TEN 1 HD/g' sony.m3u
-          sed -i 's/Sony Sports Ten 2 HD/SONY TEN 2 HD/g' sony.m3u
-          sed -i 's/Sony Sports Ten 3 HD/SONY TEN 3 HD/g' sony.m3u
-          sed -i 's/Sony Sports Ten 4 HD/SONY TEN 4 HD/g' sony.m3u
-          sed -i 's/Sony Sports Ten 5 HD/SONY TEN 5 HD/g' sony.m3u
-          sed -i 's/Sony Sports Ten 1/SONY TEN 1/g' sony.m3u
-          sed -i 's/Sony Sports Ten 2/SONY TEN 2/g' sony.m3u
+          # 3. Rename Step (Broad search to ensure it catches the line)
+          sed -i 's/Sony SET HD/SONY HD/g' raw.m3u
+          sed -i 's/Sony SAB HD/SAB HD/g' raw.m3u
+          sed -i 's/Sony Pal/SONY PAL/g' raw.m3u
+          sed -i 's/Sony Yay/SONY YAY/g' raw.m3u
+          sed -i 's/Sony Marathi/SONY MARATHI/g' raw.m3u
+          sed -i 's/Sony Aath/SONY AATH/g' raw.m3u
+          sed -i 's/Sony MAX HD/SONY MAX HD/g' raw.m3u
+          sed -i 's/Sony MAX/SONY MAX/g' raw.m3u
+          sed -i 's/Sony MAX 2/SONY MAX2/g' raw.m3u
+          sed -i 's/Sony WAH/SONY WAH/g' raw.m3u
+          sed -i 's/Sony PIX HD/SONY PIX HD/g' raw.m3u
+          sed -i 's/Sony BBC Earth HD/BBC EARTH/g' raw.m3u
+          sed -i 's/Sony Sports Ten 1 HD/SONY TEN 1 HD/g' raw.m3u
+          sed -i 's/Sony Sports Ten 2 HD/SONY TEN 2 HD/g' raw.m3u
+          sed -i 's/Sony Sports Ten 3 HD/SONY TEN 3 HD/g' raw.m3u
+          sed -i 's/Sony Sports Ten 4 HD/SONY TEN 4 HD/g' raw.m3u
+          sed -i 's/Sony Sports Ten 5 HD/SONY TEN 5 HD/g' raw.m3u
+          sed -i 's/Sony Sports Ten 1/SONY TEN 1/g' raw.m3u
+          sed -i 's/Sony Sports Ten 2/SONY TEN 2/g' raw.m3u
           sed -i 's/Sony Sports Ten 3/SONY TEN 3/g' sony.m3u
-          sed -i 's/Sony Sports Ten 4/SONY TEN 4/g' sony.m3u
-          sed -i 's/Sony Sports Ten 5/SONY TEN 5/g' sony.m3u
+          sed -i 's/Sony Sports Ten 4/SONY TEN 4/g' raw.m3u
+          sed -i 's/Sony Sports Ten 5/SONY TEN 5/g' raw.m3u
 
-          # 4. LOGO UPDATE (Forcing replacement even with extra text)
+          # 4. Logo Update from Slivtv.json
           curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" -o logos.json
           
-          if [ -s sony.m3u ] && [ -s logos.json ]; then
+          cp raw.m3u sony.m3u
+          
+          if [ -s logos.json ]; then
             jq -c '.[]' logos.json | while read -r item; do
               NAME=$(echo "$item" | jq -r '.name')
               LOGO=$(echo "$item" | jq -r '.logo')
-              
-              # Use partial matching for the channel name to find the right line
-              # Then replace anything inside tvg-logo="..." with the new URL
+              # Find lines containing the name and swap the logo string specifically
               sed -i "/$NAME/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$LOGO\"|g" sony.m3u
             done
           fi
@@ -75,4 +72,6 @@ jobs:
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Updated: $(date)" && git push)
+          # Force push if there are changes
+          git commit -m "Sony Updated: $(date)" || echo "No changes to commit"
+          git push
