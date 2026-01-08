@@ -21,8 +21,8 @@ jobs:
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
           # 1. Fetch data using the secret URL and Proxy
-          # The -x flag applies the proxy from your secrets
-          curl -x "http://$PROXY_ADDR" -L --compressed \
+          # Use "$PROXY_ADDR" directly to avoid 'http' resolution errors
+          curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
             -H "Accept: */*" \
             -H "Accept-Encoding: gzip" \
@@ -35,7 +35,7 @@ jobs:
             mv temp_sony.m3u sony.m3u
             echo "SUCCESS: Valid Sony playlist received."
           else
-            echo "FAILURE: Received invalid data or Proxy Blocked. Skipping update."
+            echo "FAILURE: Received invalid data. Ensure SONY_PROXY secret is only IP:PORT (e.g. 1.1.1.1:8080)"
             exit 1
           fi
 
