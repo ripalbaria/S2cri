@@ -20,7 +20,7 @@ jobs:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. --- AAPKA WORKING FETCH CODE (NO CHANGES) ---
+          # 1. --- AAPKA WORKING FETCH CODE (BILKUL SAME) ---
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
             -H "Accept: */*" \
@@ -29,16 +29,16 @@ jobs:
             "$SONY_SECRET_URL" \
             -o sony.m3u
 
-          # 2. --- SAFETY CHECK (Modified to be more flexible) ---
+          # 2. --- SAFETY CHECK ---
           if [ ! -s sony.m3u ]; then
-            echo "File empty hai. Stopping."
+            echo "File empty hai. Exit."
             exit 1
           fi
 
           # 3. --- CLEANUP & RENAMING ---
           sed -i 's/\r//g' sony.m3u
 
-          # Display Names Update
+          # Display Names Update (Simple Rename)
           sed -i 's/Sony SET HD[^,]*/SONY HD/Ig' sony.m3u
           sed -i 's/Sony SAB HD[^,]*/SAB HD/Ig' sony.m3u
           sed -i 's/Sony Pal[^,]*/SONY PAL/Ig' sony.m3u
@@ -64,15 +64,26 @@ jobs:
           sed -i 's/Sony Sports Ten 4[^,]*/SONY TEN 4/Ig' sony.m3u
           sed -i 's/Sony Sports Ten 5[^,]*/SONY TEN 5/Ig' sony.m3u
 
-          # 4. --- LOGO SWAP (Aggressive Random Replacement for Jio Images) ---
-          # Slivtv.json se logos ki list nikaal kar shuffle karein
-          curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" | jq -r '.[].logo' | shuf > logos.txt
+          # 4. --- SAFE LOGO SWAP (AWK Logic) ---
+          # Slivtv.json se logos shuffle karke list banayein
+          curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" | jq -r '.[].logo' | shuf > logos_list.txt
           
-          # M3U mein jahan jiotv images hain, unhe logos.txt ke random logos se badlein
-          while read -r logo; do
-            # Ek baar mein sirf ek (first) Jio logo replace hoga
-            sed -i "0,/jiotvimages.cdn.jio.com[^\" ]*/s|jiotvimages.cdn.jio.com[^\" ]*|$logo|" sony.m3u
-          done < logos.txt
+          # AWK script: Agar line mein 'tvg-logo' hai, toh naya logo list se uthayein
+          awk -v logofile="logos_list.txt" '
+          BEGIN {
+              while ((getline logo < logofile) > 0) {
+                  logos[++n] = logo
+              }
+              idx = 1
+          }
+          {
+              if ($0 ~ /tvg-logo="/) {
+                  # Naya logo replace karein
+                  sub(/tvg-logo="[^"]*"/, "tvg-logo=\"" logos[idx] "\"", $0)
+                  idx = (idx % n) + 1
+              }
+              print $0
+          }' sony.m3u > temp_sony.m3u && mv temp_sony.m3u sony.m3u
 
       - name: Commit and Push Changes
         run: |
