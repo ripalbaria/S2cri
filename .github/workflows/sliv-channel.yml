@@ -15,7 +15,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch Sony with Proxy
+      - name: Fetch Sony and Update Logos
         env:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
@@ -26,28 +26,31 @@ jobs:
             "$SONY_SECRET_URL" \
             -o temp_sony.m3u
 
-          # 2. Safety Check
-          if ! grep -q "#EXTM3U" temp_sony.m3u; then
-            echo "FAILURE: Invalid M3U received."
-            exit 1
-          fi
-
-          # 3. Update Logos from Slivtv.json
-          # This part downloads your reference JSON to get the logos
+          # 2. Fetch the JSON file containing the new logos
           curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" -o logos.json
 
-          # Loop through each channel in the JSON and update the M3U
-          # Note: This assumes the channel names match exactly between M3U and JSON
-          while read -r name logo; do
-            # Replace tvg-logo="old" with tvg-logo="new" for specific channels
-            sed -i "/$name/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$logo\"|g" temp_sony.m3u
-          done < <(jq -r '.[] | "\(.name) \(.logo)"' logos.json)
-
-          mv temp_sony.m3u sony.m3u
+          # 3. Process the file only if it contains data
+          if [ -s temp_sony.m3u ]; then
+            # Extract names and logos from Slivtv.json and update the M3U
+            # We use jq to parse the JSON and sed to swap the logo strings
+            jq -c '.[]' logos.json | while read -r channel; do
+              NAME=$(echo "$channel" | jq -r '.name')
+              LOGO=$(echo "$channel" | jq -r '.logo')
+              
+              # Find the line containing the channel name and replace the logo URL
+              sed -i "/$NAME/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$LOGO\"|g" temp_sony.m3u
+            done
+            
+            mv temp_sony.m3u sony.m3u
+            echo "SUCCESS: M3U updated with new logos."
+          else
+            echo "FAILURE: Fetched file is empty. Check Proxy or Secret URL."
+            exit 1
+          fi
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Update with Logos: $(date)" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Update with New Logos: $(date)" && git push)
