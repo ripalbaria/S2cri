@@ -1,4 +1,4 @@
-name: Sony-Sync Playlist
+name: sony-sync-playlist
 
 on:
   schedule:
@@ -15,36 +15,36 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch Sony and Update Logos
+      - name: Fetch Sony and Swap Logos
         env:
           SONY_SECRET_URL: ${{ secrets.SONY_URL }}
           PROXY_ADDR: ${{ secrets.SONY_PROXY }}
         run: |
-          # 1. Fetch the raw M3U data
+          # 1. Fetch data using your working logic
           curl -x "$PROXY_ADDR" -L --compressed \
             -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0" \
+            -H "Accept: */*" \
+            -H "Accept-Encoding: gzip" \
+            -H "Cache-Control: no-cache, no-store" \
             "$SONY_SECRET_URL" \
-            -o temp_sony.m3u
+            -o sony.m3u
 
-          # 2. Fetch the JSON file containing the new logos
+          # 2. Update Logos from your Slivtv.json
+          # Fetch the latest logos
           curl -s "https://raw.githubusercontent.com/ripalbaria/play/refs/heads/main/Slivtv.json" -o logos.json
 
-          # 3. Process the file only if it contains data
-          if [ -s temp_sony.m3u ]; then
-            # Extract names and logos from Slivtv.json and update the M3U
-            # We use jq to parse the JSON and sed to swap the logo strings
-            jq -c '.[]' logos.json | while read -r channel; do
-              NAME=$(echo "$channel" | jq -r '.name')
-              LOGO=$(echo "$channel" | jq -r '.logo')
+          # Loop through each item in the JSON and replace logo in sony.m3u
+          if [ -s sony.m3u ] && [ -s logos.json ]; then
+            jq -c '.[]' logos.json | while read -r item; do
+              NAME=$(echo "$item" | jq -r '.name')
+              LOGO=$(echo "$item" | jq -r '.logo')
               
-              # Find the line containing the channel name and replace the logo URL
-              sed -i "/$NAME/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$LOGO\"|g" temp_sony.m3u
+              # This finds the line with the channel name and replaces the tvg-logo URL
+              sed -i "/$NAME/s|tvg-logo=\"[^\"]*\"|tvg-logo=\"$LOGO\"|g" sony.m3u
             done
-            
-            mv temp_sony.m3u sony.m3u
-            echo "SUCCESS: M3U updated with new logos."
+            echo "SUCCESS: Logos updated in sony.m3u"
           else
-            echo "FAILURE: Fetched file is empty. Check Proxy or Secret URL."
+            echo "ERROR: File download failed or JSON not found"
             exit 1
           fi
 
@@ -53,4 +53,4 @@ jobs:
           git config --global user.name "GithubBot"
           git config --global user.email "bot@github.com"
           git add sony.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Update with New Logos: $(date)" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Sony Update: $(date)" && git push)
